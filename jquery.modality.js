@@ -1,7 +1,7 @@
 /**
  * @package modality
  * @author Diego La Monica
- * @version 0.2
+ * @version 0.3
  * @license GPL 2 (http://www.gnu.org/licenses/gpl-2.0.html)
  */
 
@@ -30,9 +30,9 @@
  */
 
 jQuery.fn.modality = function(myOptions){
-	var thePromptWindow = this;
-	var saveSettings = false;
-	if($(thePromptWindow).hasClass('.modality')){
+	var thePromptWindow = this,
+		saveSettings = false;
+	if($(thePromptWindow).hasClass('modality')){
 		/*
 		 * has just defined something?
 		 */
@@ -65,8 +65,14 @@ jQuery.fn.modality = function(myOptions){
 					opacity:		 	0.5,
 					zIndex:				999
 				},
+				/*
+				 * Minimal distance from left border
+				 */
 				minPaddingLeft:	0,
 				minPaddingTop: 0,
+				/* 
+				 * the buttons list 
+				 */
 				buttons: [
 				    /*
 				     * No default buttons defined
@@ -101,8 +107,17 @@ jQuery.fn.modality = function(myOptions){
 	/*
 	 * Override base settings
 	 */
-	var options = jQuery.extend(defaultOptions, myOptions);
+	var options = jQuery.extend(null, defaultOptions);
+	options = jQuery.extend(options, myOptions);
 	
+	/*
+	 * v0.3: bugfix: if one of the shadowCSS properties is defined, others would not be created
+	 */
+	options.shadowCSS = jQuery.extend({
+					backgroundColor: 	'#000',
+					opacity:		 	0.5,
+					zIndex:				999
+				}, options.shadowCSS);
 	/*
 	 * v 0.2: 
 	 * - Moved the action outside the `each` loop to allow extra use.
@@ -110,14 +125,18 @@ jQuery.fn.modality = function(myOptions){
 	 *  
 	 */
 	var executeAction = function(thatButton, action){
-		
-		if(thatButton===null || typeof(thatButton['callback'])==='undefined' || typeof(thatButton['callback'])==='function' && thatButton.callback(action)){
+		var options = $(window.__currentModalityItem).data('modality-settings');
+		if(thatButton===null || 
+				typeof(thatButton['callback'])==='undefined' || 
+				typeof(thatButton['callback'])==='function' && thatButton.callback(action)){
 			/*
 			 * if the callback function returns true or it's not defined i will fade out
 			 * the obfuscator element and the prompt window. 
 			 */
-			$(thePromptWindow).fadeOut('fast');
+			$(window.__currentModalityItem).fadeOut('fast');
 			$('#'+options.theShadowId).fadeOut('fast');
+			window.__currentModalityItem = null;
+			
 		}
 		
 	};
@@ -140,7 +159,7 @@ jQuery.fn.modality = function(myOptions){
 		/*
 		 * Execute the action
 		 */
-		executeAction(thatButton, thatButton.action);
+		executeAction(thatButton,  (thatButton==null)?options.action:thatButton.action );
 		/*
 		 * Anything more!
 		 */
@@ -202,33 +221,46 @@ jQuery.fn.modality = function(myOptions){
 		 * modal prompt window to the center of the screen.
 		 */
 		$(window).on('resize', function(){
-			var viewPortWidth 	= $(window).width(),
-			viewPortHeight	= $(window).height();
-		
 			/*
-			 * Forcing position absolute to recalculate the
-			 * right prompt window size.
+			 * v0.3: all modality elements will be resized.
 			 */
-			$(thePromptWindow).css( 'position',	'absolute');
-			var	thisWidth = $(thePromptWindow).width(),
-				thisHeight = $(thePromptWindow).height(),
-				
-				top = (viewPortHeight - thisHeight) /2,
-				left =  (viewPortWidth - thisWidth) /2;
-			/*
-			 * If left and top position would fall out of the minimum padding
-			 * I'll set them to the minimum position;
-			 */
-			if(top<options.minPaddingTop) 	top = options.minPaddingTop;
-			if(left<options.minPaddingLeft) left = options.minPaddingLeft;
-			
-			$(thePromptWindow).css(
-				{
-					'top':		top + 'px',
-					'left':		left + 'px',
-					'zIndex':	options.shadowCSS.zIndex+1
-				}
-			);
+			$('.modality').each(function(){
+
+				var viewPortWidth 	= $(window).width(),
+				viewPortHeight	= $(window).height(),
+				options = $(this).data('modality-settings');
+					
+				/*
+				 * Forcing position absolute to recalculate the
+				 * right prompt window size.
+				 */
+				$(this).css( 'position',	'absolute');
+				var	thisWidth = $(thePromptWindow).width(),
+					thisHeight = $(thePromptWindow).height(),
+					/*
+					 * Where it would be placed?
+					 */
+					top = (viewPortHeight - thisHeight) /2,
+					left =  (viewPortWidth - thisWidth) /2;
+				/*
+				 * If left and top position would fall out of the minimum padding
+				 * I'll set them to the minimum position;
+				 */
+				if(top<options.minPaddingTop) 	top = options.minPaddingTop;
+				if(left<options.minPaddingLeft) left = options.minPaddingLeft;
+				/*
+				 * v0.3 setting position to fixed when the popup is smaller than the viewport
+				 */
+				var position = (top==0 || left ==0)?'absolute':'fixed';
+				$(this).css(
+					{
+						'top':		top + 'px',
+						'left':		left + 'px',
+						'zIndex':	(options.shadowCSS.zIndex+1),
+						'position': position
+					}
+				);
+			});
 		});
 		
 	}
@@ -256,42 +288,55 @@ jQuery.fn.modality = function(myOptions){
 		 */
 		options.init = false;
 		options.exec = true;
-		
+		/*
+		 * Setup default actions
+		 */
 		if(options.isDefault) 	options.action = 'confirm';
 		if(options.isCancel) 	options.action = 'cancel';
 		
 		$(thePromptWindow).data('modality-settings', options);
 		
 	}
-	$(document).on('keydown',function(event){
-		if(event.which == 13)
-			/*
-			 * Enter pressed then the default confirm button has been pressed 
-			 */
-			$(options.buttons).each(function(){
-				if(this.isDefault)
+	if(typeof(window['__modalityKeydownAttached']) == 'undefined'){
+		/*
+		 * v0.3: To avoid the keydown to be attacched more than one time
+		 */
+		window.__modalityKeydownAttached = true;
+		$(document).on('keydown',function(event){
+			var options = $(window.__currentModalityItem).data('modality-settings');
+			if(options==null) return;
+			if(event.which == 13)
+				/*
+				 * Enter pressed then the default confirm button has been pressed 
+				 */
+				$(options.buttons).each(function(){
+					if(this.isDefault){
 					
-					executeAction(this, 'confirm');
+						executeAction(this, 'confirm');
+						event.preventDefault();
+					}
 					
-			});
+				});
 		
-
-	
-		if(event.which == 27)
-			/*
-			 * ESCAPE key pressed then the default cancel button has been pressed 
-			 */
+			if(event.which == 27)
+				/*
+				 * ESCAPE key pressed then the default cancel button has been pressed 
+				 */
 			
-			$(options.buttons).each(function(){
-				if(this.isCancel)
+				$(options.buttons).each(function(){
+					if(this.isCancel){
 					
-					executeAction(this, 'cancel');
-					
-			});
+						executeAction(this, 'cancel');
+						event.preventDefault();
+					}
+				});
 
-	});
+		});
+	}
 	/*
-	 * This is useful to locate correctly the prompt window
+	 * v0.3: This is useful to locate correctly the prompt window
 	 */
+	window.__currentModalityItem = thePromptWindow;
+	
 	$(window).resize();
 };
