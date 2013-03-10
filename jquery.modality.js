@@ -1,7 +1,7 @@
 /**
  * @package modality
  * @author Diego La Monica
- * @version 0.3
+ * @version 0.4
  * @license GPL 2 (http://www.gnu.org/licenses/gpl-2.0.html)
  */
 
@@ -30,6 +30,24 @@
  */
 
 jQuery.fn.modality = function(myOptions){
+	
+	var autoDetectZIndex = function(ignoreElement){
+		
+		console.log('autodetecting');
+		/*
+		 * Detecting the most higher zIndex value on the page without counting the ignoreElement
+		 */
+		var highestIndex = 0;
+		$('*').not(ignoreElement).not('.modality').each(function(){
+		    var currentIndex = parseInt($(this).css("z-index"), 10);
+		    if(currentIndex > highestIndex) {
+		    	highestIndex = currentIndex;
+		    }
+		});
+		return highestIndex+1;
+		
+	};
+	
 	var thePromptWindow = this,
 		saveSettings = false;
 	if($(thePromptWindow).hasClass('modality')){
@@ -46,7 +64,8 @@ jQuery.fn.modality = function(myOptions){
 		defaultOptions = {
 				/*
 				 * If this option is true it means that the object is just prepared,
-				 * after you can invoke it just calling the  
+				 * after you can invoke it just calling the modality() method on the 
+				 * DOM Element
 				 */
 				init: false,
 				
@@ -54,7 +73,23 @@ jQuery.fn.modality = function(myOptions){
 				 * the button bar container node type and ID
 				 */
 				buttonBarType:	'div',
-				buttonBarId:	'the-button-bar',
+				
+				/* 
+				 * v0.4: buttonBarId will be generated as unique if not set (default value is null) 
+				 */ 
+				buttonBarId:	null,
+				
+				/*
+				 * v0.4: buttonBar can have one or more classes
+				 */
+				buttonBarClass:	'modality-button-bar',
+
+				/*
+				 * v0.4: Allow auto closing after a given time  
+				 */
+
+				cancelTimeout: 0,
+				
 				/*
 				 * the shadow ID behind the prompt window
 				 * and CSS Attributes
@@ -63,7 +98,7 @@ jQuery.fn.modality = function(myOptions){
 				shadowCSS:	{
 					backgroundColor: 	'#000',
 					opacity:		 	0.5,
-					zIndex:				999
+					// zIndex:				999 /* Default value removed from settings in favor of zIndex autodetection */
 				},
 				/*
 				 * Minimal distance from left border
@@ -92,10 +127,17 @@ jQuery.fn.modality = function(myOptions){
 					 * 		isCancel: true
 					 * 
 					 * ==================================================================
+					 * 
+					 * Added in version 0.2
+					 * If button is hidden will not be displayed on the interface even if
+					 * it will expose the action.
+					 * If not set the default value will be false.
+					 * 
+					 * 		isHidden: false
 					 * },
 					 */
 				]
-			};
+		};
 	}
 	/*
 	 * If i've passed a command to method (like cancel or confirm)
@@ -109,14 +151,24 @@ jQuery.fn.modality = function(myOptions){
 	 */
 	var options = jQuery.extend(null, defaultOptions);
 	options = jQuery.extend(options, myOptions);
-	
+	/*
+	 * v0.4: bugfix: If not defined and multiple modality are on the same page only the first
+	 * will have the button bar. 
+	 */
+	if(options.buttonBarId == null){
+		options.buttonBarId = $(this).attr('id') + '-button-bar';
+	}
 	/*
 	 * v0.3: bugfix: if one of the shadowCSS properties is defined, others would not be created
 	 */
 	options.shadowCSS = jQuery.extend({
 					backgroundColor: 	'#000',
 					opacity:		 	0.5,
-					zIndex:				999
+					/*
+					 * v0.4: If not defined I will not set it as static value but
+					 * I need to evaluate it.
+					 */
+					//zIndex:				999
 				}, options.shadowCSS);
 	/*
 	 * v 0.2: 
@@ -179,22 +231,28 @@ jQuery.fn.modality = function(myOptions){
 			 */
 			buttonBar = $('<'+options.buttonBarType+' id="'+options.buttonBarId+'" />').appendTo(this);
 			
+			$(buttonBar).addClass(options.buttonBarClass);
 			/*
 			 * For each button i will create a link element and
 			 * attach to it the callback function if it's defined
 			 */
 			$(options.buttons).each(function(){
 				var thatButton = this;
-				$('<a class="button" href="#">' + this.label + '</a>')
-					.appendTo(buttonBar)
-					.on('click',function(event){
-						
-						executeAction(thatButton, thatButton.action);
-						/*
-						 * Avoiding native behavior
-						 */
-						event.preventDefault();
-					});
+				/*
+				 * v0.4: If isHidden never display the button on the interface.
+				 */
+				if( thatButton['isHidden'] === undefined ) thatButton.isHidden = false;
+				if(!thatButton.isHidden )
+					$('<a class="button" href="#">' + this.label + '</a>')
+						.appendTo(buttonBar)
+						.on('click',function(event){
+							
+							executeAction(thatButton, thatButton.action);
+							/*
+							 * Avoiding native behavior
+							 */
+							event.preventDefault();
+						});
 			});
 		}
 	}
@@ -216,6 +274,7 @@ jQuery.fn.modality = function(myOptions){
 		options.shadowCSS.right		= 0;
 		
 		theShadowBox.css(options.shadowCSS);
+		
 		/*
 		 * On window resize I need to relocate correctly the 
 		 * modal prompt window to the center of the screen.
@@ -235,13 +294,17 @@ jQuery.fn.modality = function(myOptions){
 				 * right prompt window size.
 				 */
 				$(this).css( 'position',	'absolute');
-				var	thisWidth = $(thePromptWindow).width(),
-					thisHeight = $(thePromptWindow).height(),
+				
+				/*
+				 * v0.4 bugfix: width was computed over the first modality element. 
+				 */
+				var	thisWidth = $(this).width(),
+					thisHeight = $(this).height(),
 					/*
 					 * Where it would be placed?
 					 */
-					top = (viewPortHeight - thisHeight) /2,
-					left =  (viewPortWidth - thisWidth) /2;
+					top = parseInt((viewPortHeight - thisHeight) /2),
+					left =  parseInt((viewPortWidth - thisWidth) /2);
 				/*
 				 * If left and top position would fall out of the minimum padding
 				 * I'll set them to the minimum position;
@@ -252,11 +315,12 @@ jQuery.fn.modality = function(myOptions){
 				 * v0.3 setting position to fixed when the popup is smaller than the viewport
 				 */
 				var position = (top==0 || left ==0)?'absolute':'fixed';
+				
 				$(this).css(
 					{
 						'top':		top + 'px',
 						'left':		left + 'px',
-						'zIndex':	(options.shadowCSS.zIndex+1),
+						'zIndex':	(parseInt( $('#'+options.theShadowId).css('zIndex') )+1),
 						'position': position
 					}
 				);
@@ -274,12 +338,52 @@ jQuery.fn.modality = function(myOptions){
 		$(theShadowBox).hide();
 		
 	}else{
-		/*
-		 * display the prompt window and the shadow box behind.
-		 */
-		$(thePromptWindow).fadeIn();
-		$(theShadowBox).fadeIn();
 		
+		var letsDisplayIt = function(){
+			/*
+			 * Ensure window to be resized according its content 
+			 */
+			$(window).resize();
+			/*
+			 * display the prompt window and the shadow box behind.
+			 */
+			$(thePromptWindow).fadeIn();
+			$(theShadowBox).fadeIn();
+			
+			if(options.cancelTimeout){
+				
+				setTimeout(function(){
+					$(thePromptWindow).modality('cancel');
+				}, options.cancelTimeout);
+			}
+			
+		};
+		
+		
+		/*
+		 * v0.4: detecting the highest zIndex
+		 */
+		if(options.shadowCSS['zIndex'] === undefined){
+			theShadowBox.css('zIndex', autoDetectZIndex(theShadowBox));
+		}
+		
+		/*
+		 * v0.4: managing AJAX contents
+		 */
+		if(options['AJAX'] !== undefined){
+			
+			$.ajax(options.AJAX).done(function(data){
+				$(this).html(data);
+				
+				letsDisplayIt();
+				
+			}).fail(function(data){
+				$(this).html("Sorry! Something goes wrong with remote contents!");
+				letsDisplayIt();
+			});
+		}else{
+			letsDisplayIt();
+		}
 	}
 	
 	if(saveSettings){
@@ -337,6 +441,4 @@ jQuery.fn.modality = function(myOptions){
 	 * v0.3: This is useful to locate correctly the prompt window
 	 */
 	window.__currentModalityItem = thePromptWindow;
-	
-	$(window).resize();
 };
