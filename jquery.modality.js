@@ -1,7 +1,7 @@
 /**
  * @package modality
  * @author Diego La Monica
- * @version 0.4
+ * @version 0.5
  * @license GPL 2 (http://www.gnu.org/licenses/gpl-2.0.html)
  */
 
@@ -28,12 +28,25 @@
  * mailto:me@diegolamonica.info
  * 
  */
+(function($){	
+/*
+ * v0.5 Encapsulation to grant $ to be jQuery
+ */
+$.fn.modality = function(myOptions){
 
-jQuery.fn.modality = function(myOptions){
+	var doSaveSettings = function(modalityBox, options){
+		var optionsToSave = $.extend(null, options);
+		/*
+		 * Disabling init and enabling exec
+		 */
+		optionsToSave.init = false;
+		optionsToSave.exec = true;
+		
+		$(modalityBox).data('modality-settings', optionsToSave);	
+	};
 	
 	var autoDetectZIndex = function(ignoreElement){
 		
-		console.log('autodetecting');
 		/*
 		 * Detecting the most higher zIndex value on the page without counting the ignoreElement
 		 */
@@ -105,6 +118,11 @@ jQuery.fn.modality = function(myOptions){
 				 */
 				minPaddingLeft:	0,
 				minPaddingTop: 0,
+				
+				/*
+				 * v0.5: allows to define the behavior of the click outside the modal box. 
+				 */
+				clickOutsideIsCancel:	true,
 				/* 
 				 * the buttons list 
 				 */
@@ -128,7 +146,7 @@ jQuery.fn.modality = function(myOptions){
 					 * 
 					 * ==================================================================
 					 * 
-					 * Added in version 0.2
+					 * Added in version 0.4
 					 * If button is hidden will not be displayed on the interface even if
 					 * it will expose the action.
 					 * If not set the default value will be false.
@@ -276,6 +294,14 @@ jQuery.fn.modality = function(myOptions){
 		theShadowBox.css(options.shadowCSS);
 		
 		/*
+		 * v0.5: click outside the modal box will raise the cancel event
+		 */
+		if(options.clickOutsideIsCancel)
+			$(theShadowBox).on('click', function(event){
+				event.stopPropagation();
+				$(window.__currentModalityItem).modality('cancel');
+			});
+		/*
 		 * On window resize I need to relocate correctly the 
 		 * modal prompt window to the center of the screen.
 		 */
@@ -286,9 +312,12 @@ jQuery.fn.modality = function(myOptions){
 			$('.modality').each(function(){
 
 				var viewPortWidth 	= $(window).width(),
-				viewPortHeight	= $(window).height(),
-				options = $(this).data('modality-settings');
-					
+					viewPortHeight	= $(window).height(),
+					options = $(this).data('modality-settings');
+				/*
+				 * v0.5 if options is not defined I must do nothing
+				 */
+				if(options === undefined) return;
 				/*
 				 * Forcing position absolute to recalculate the
 				 * right prompt window size.
@@ -328,7 +357,21 @@ jQuery.fn.modality = function(myOptions){
 		});
 		
 	}
-	
+	/*
+	 * v0.5 bugfix: moved before the display operation to ensure the options saving
+	 */
+	if(saveSettings){
+		/*
+		 * Removed wrong code
+		 *
+		if(options.isDefault) 	options.action = 'confirm';
+		if(options.isCancel) 	options.action = 'cancel';
+		*/
+		
+		doSaveSettings(this, options);
+		
+	}
+
 	
 	if(options.init){
 		/*
@@ -366,7 +409,8 @@ jQuery.fn.modality = function(myOptions){
 		if(options.shadowCSS['zIndex'] === undefined){
 			theShadowBox.css('zIndex', autoDetectZIndex(theShadowBox));
 		}
-		
+
+
 		/*
 		 * v0.4: managing AJAX contents
 		 */
@@ -386,21 +430,6 @@ jQuery.fn.modality = function(myOptions){
 		}
 	}
 	
-	if(saveSettings){
-		/*
-		 * Disabling init and enabling exec
-		 */
-		options.init = false;
-		options.exec = true;
-		/*
-		 * Setup default actions
-		 */
-		if(options.isDefault) 	options.action = 'confirm';
-		if(options.isCancel) 	options.action = 'cancel';
-		
-		$(thePromptWindow).data('modality-settings', options);
-		
-	}
 	if(typeof(window['__modalityKeydownAttached']) == 'undefined'){
 		/*
 		 * v0.3: To avoid the keydown to be attacched more than one time
@@ -441,4 +470,10 @@ jQuery.fn.modality = function(myOptions){
 	 * v0.3: This is useful to locate correctly the prompt window
 	 */
 	window.__currentModalityItem = thePromptWindow;
+	
+	/*
+	 * v0.5: ensure jQuery chainability
+	 */
+	return this;
 };
+})(jQuery);
